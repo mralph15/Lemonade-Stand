@@ -1,0 +1,23 @@
+---
+title: "Lemonade Stand Monthly Report"
+runtime: shiny
+output: html_document
+---
+
+## Choose your Seed
+
+```{r choose-seed, echo = FALSE}
+library(shiny)
+textInput("seed_choice", "Enter a random number to generate a dataset", 1234)
+```
+
+## A Histogram
+```{r histogram, echo = FALSE}
+
+renderPlot({
+  req(input$seed_choice)
+  set.seed(input$seed_choice)
+  df <- rnorm(25, 10, 2)
+  hist(df)
+})
+```
