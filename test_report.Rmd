@@ -4,6 +4,13 @@ runtime: shiny
 output: html_document
 ---
 
+```{r logo, echo=FALSE}
+htmltools::img(src = "https://github.com/mralph15/Lemonade-Stand/blob/main/img/lemonde-stand-logo.png?raw=true", 
+               alt = 'logo', 
+               style = 'position:absolute; top:0; right:0; padding:10px;',
+               width = 128)
+```
+
 ## Choose your Seed
 
 ```{r choose-seed, echo = FALSE}
