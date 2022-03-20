@@ -1,0 +1,194 @@
+---
+title: "Lemonade Stand Monthly Report"
+runtime: shiny
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, echo = FALSE, message = FALSE}
+library(shiny)
+library(tidyverse)
+```
+
+```{r logo, echo=FALSE}
+htmltools::img(src = "https://github.com/mralph15/Lemonade-Stand/blob/main/lemonde-stand-logo.png?raw=true", 
+               alt = 'logo', 
+               style = 'position:absolute; top:0; right:0; padding:10px;',
+               width = 128)
+```
+
+## Goal
+
+Creation of a replicable report on the sales of a fictional lemonade stand with randomly generated data.
+
+## Set Up
+Imagine you are the owner of an old fashioned lemonade stand that sells only two items: lemonade (for \$1.00) and lemon bars (for \$2.00). You have just had your first month of sales and would like to know how you did and if there are any insights to be gained from your data that might make next month even more profitable. Each day you count the number of cars that drive by and record whether or not they stop at your stand. If they do stop, you fulfill their order while also taking note of their gender, age, and color of their car.
+
+## Dataset Creation
+
+```{r choose-seed, echo = FALSE}
+textInput("seed_choice", "Enter a random number to generate a dataset", 1234)
+```
+
+This report is replicable, meaning it can be generated on different datasets and automatically populate with the correct information. To demonstrate this functionality, you may enter in any number above to generate a random dataset.
+
+For a summary of what is occuring, based on the seed selection set by the user, a random number of cars per day are selected based on one of two Poission distributions (with more cars on the weekends). Whether or not a car stops at the stand is determined by a simple 50/50 coin flip. All the following varibales are only set if a car stops. The color of the car is assigned randomly with each color given a set probability. Age is set randomly from a uniform distribution with a minimum age of 16 and a maximum of 80. Gender is set in the following manner: each day is given a randomly set male probability and then within each day each car driver's gender is assigned based on a weighted coin flip based on that male probability. Whether or not a driver has a 15% off coupon (only redeemable if they spend more than $15) is randomly set with a 20% probability any given driver that stops will remember the coupon.
+
+For purchases, drivers are randomly selected to be either "hungry", "thristy", or "both" with 20%, 50%, and 30% probabilities respectively. "Hungry" drivers will buy $X$ number of lemon bars with the following distribution: $X \sim \textrm{Poisson}(1)$, "thirsty" drivers will buy $Y$ lemonades with the following distribution: $Y \sim \textrm{Poisson}(2)$, and "both" drivers with buy both $X + Y$ with the following distrubution: $X + Y \sim \textrm{Poisson}(1) + \textrm{Poisson}(2)$. Drivers have additonal preferences where males will buy an additional lemon bar 20% of the time, weekday drivers will buy an additional $\textrm{Poisson}(0.5)$ lemonades, and all drivers will buy an additional $\textrm{Poisson}(\frac{\textrm{age}}{100})$ lemonades and lemon bars based on their age.
+
+
+```{r create-dataset}
+month_long <- reactive({
+#set seed
+set.seed(input$seed_choice)
+
+#days of the month
+day <- seq(1, 28, 1)
+day_of_week <- rep(c("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"), 4)
+
+day <- data.frame(day)
+day_of_week <- data.frame(day_of_week)
+
+month <- cbind(day, day_of_week)
+
+#number of cars per day
+for(i in 1:nrow(month)){
+  if(month$day_of_week[i] %in% c("Fr", "Sa", "Su")){
+    month$cars[i] = rpois(1, 120)
+  }
+  else{
+    month$cars[i] = rpois(1, 90)
+  }
+}
+
+#row per car
+month_long <- month %>% uncount(cars)
+month_long <- left_join(month_long, month %>% select(day, cars), by = "day") %>%
+  rename("total_cars" = "cars")
+
+#did car stop?
+for(i in 1:nrow(month_long)){
+  month_long$car_stopped[i] = as.numeric(rbernoulli(1, 0.5))
+}
+
+#color of car
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$car_color[i] = sample(c("black", "white", "red", "blue", "other"), size = 1,
+                                     prob = c(0.3, 0.3, 0.1, 0.2, 0.1))
+  }
+  else{
+    month_long$car_color[i] = NA
+  }
+}
+
+#driver age
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$age[i] = sample(16:80, 1)
+  }
+  else{
+    month_long$age[i] = NA
+  }
+}
+
+#driver gender
+male_prob = c()
+for(i in 1:28){
+  male_prob[i] = runif(1, 0, 1)
+}
+
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$gender[i] = sample(c("M", "F"), size = 1,
+                                  prob = c(male_prob[month_long$day[i]], 1-male_prob[month_long$day[i]]))
+  }
+  else{
+    month_long$gender[i] = NA
+  }
+}
+
+#driver coupon
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$coupon[i] = as.integer(rbernoulli(1, 0.2))
+  }
+  else{
+    month_long$coupon[i] = NA
+  }
+}
+
+#driver preferences
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$prefs[i] = sample(c("hungry", "thirsty", "both"), size = 1,
+                                 prob = c(0.2, 0.5, 0.3))
+    month_long$lemon_bar[i] = 0
+    month_long$lemonade[i] = 0
+  }
+  else{
+    month_long$prefs[i] = NA
+    month_long$lemon_bar[i] = NA
+    month_long$lemonade[i] = NA
+  }
+}
+
+#baseline driver purchases
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    if(month_long$prefs[i] == "hungry"){
+      month_long$lemon_bar[i] = month_long$lemon_bar[i] + rpois(1, 1)
+    }
+    else if(month_long$prefs[i] == "thirsty"){
+      month_long$lemonade[i] = month_long$lemonade[i] + rpois(1, 2)
+    }
+    else{
+      month_long$lemon_bar[i] = month_long$lemon_bar[i] + rpois(1, 1)
+      month_long$lemonade[i] = month_long$lemonade[i] + rpois(1, 2)
+    }
+  }
+}
+
+#specific driver preferences
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    if(month_long$gender[i] == "M"){
+      month_long$lemon_bar[i] = month_long$lemon_bar[i] + as.integer(rbernoulli(1, 0.2))
+    }
+    if(month_long$day_of_week[i] %in% c("Mo", "Tu", "We", "Th")){
+      month_long$lemonade[i] == month_long$lemonade[i] + rpois(1, 0.5)
+    }
+    month_long$lemonade[i] =  month_long$lemonade[i] + rpois(1, month_long$age[i]/100)
+    month_long$lemon_bar[i] = month_long$lemon_bar[i] + rpois(1, month_long$age[i]/100)
+  }
+}
+
+#driver spending
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1){
+    month_long$spending[i] = month_long$lemonade[i] + month_long$lemon_bar[i] * 2
+  }
+  else{
+    month_long$spending[i] = NA
+  }
+}
+
+#driver coupon application
+for(i in 1:nrow(month_long)){
+  if(month_long$car_stopped[i] == 1 & month_long$coupon[i] == 1 & month_long$spending[i] > 10){
+    month_long$spending[i] = month_long$spending[i] * 0.85
+  }
+}
+
+month_long
+})
+```
+
+## A Histogram
+```{r histogram, echo = FALSE}
+renderPlot({
+  req(input$seed_choice)
+  hist(month_long()$spending)
+})
+```
