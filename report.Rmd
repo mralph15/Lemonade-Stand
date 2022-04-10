@@ -33,7 +33,7 @@ textInput("seed_choice", "Enter a random number to generate a dataset", 1234)
 
 This report is replicable, meaning it can be generated on different datasets and automatically populate with the correct information. To demonstrate this functionality, you may enter in any number above to generate a random dataset.
 
-For a summary of what is occuring, based on the seed selection set by the user, a random number of cars per day are selected based on one of two Poission distributions (with more cars on the weekends). Whether or not a car stops at the stand is determined by a simple 50/50 coin flip. All the following varibales are only set if a car stops. The color of the car is assigned randomly with each color given a set probability. Age is set randomly from a uniform distribution with a minimum age of 16 and a maximum of 80. Gender is set in the following manner: each day is given a randomly set male probability and then within each day each car driver's gender is assigned based on a weighted coin flip based on that male probability. Whether or not a driver has a 15% off coupon (only redeemable if they spend more than $15) is randomly set with a 20% probability any given driver that stops will remember the coupon.
+For a summary of what is going on under the hood, based on the seed selection set by the user, a random number of cars per day are selected based on one of two Poission distributions (with more cars on the weekends). Whether or not a car stops at the stand is determined by a simple 50/50 coin flip. All the subsequent varibales are only set if a car stops. The color of the car is assigned randomly with each color given a set probability. Age is set randomly from a uniform distribution with a minimum age of 16 and a maximum of 80. Gender is set in the following manner: each day is given a randomly set male probability and then within each day each car driver's gender is assigned based on a weighted coin flip based on that male probability. Whether or not a driver has a 15% off coupon (only redeemable if they spend more than $15) is randomly set with a 20% probability any given driver that stops will remember the coupon.
 
 For purchases, drivers are randomly selected to be either "hungry", "thristy", or "both" with 20%, 50%, and 30% probabilities respectively. "Hungry" drivers will buy $X$ number of lemon bars with the following distribution: $X \sim \textrm{Poisson}(1)$, "thirsty" drivers will buy $Y$ lemonades with the following distribution: $Y \sim \textrm{Poisson}(2)$, and "both" drivers with buy both $X + Y$ with the following distrubution: $X + Y \sim \textrm{Poisson}(1) + \textrm{Poisson}(2)$. Drivers have additonal preferences where males will buy an additional lemon bar 20% of the time, weekday drivers will buy an additional $\textrm{Poisson}(0.5)$ lemonades, and all drivers will buy an additional $\textrm{Poisson}(\frac{\textrm{age}}{100})$ lemonades and lemon bars based on their age.
 
@@ -185,10 +185,53 @@ month_long
 })
 ```
 
-## A Histogram
-```{r histogram, echo = FALSE}
-renderPlot({
+## Report
+
+```{r report}
+#Number of cars
+total_cars <- reactive({
   req(input$seed_choice)
-  hist(month_long()$spending)
+  month_long() %>%
+    distinct(day, .keep_all = TRUE) %>%
+    summarise("total" = sum(total_cars)) %>%
+    pull(total)
+  })
+
+stopped_cars <- reactive({
+  req(input$seed_choice)
+  month_long() %>%
+    summarise(total = sum(car_stopped)) %>%
+    pull(total)
+  })
+
+stopped_percent <- reactive({
+  req(input$seed_choice)
+  round(stopped_cars()/total_cars()*100, digits = 1)})
+
+itemized <- reactive({
+  req(input$seed_choice)
+  month_long() %>%
+    summarise(bar_total = sum(lemon_bar, na.rm = TRUE),
+              ade_total = sum(lemonade, na.rm = TRUE))})
+
+total_items <- reactive({
+  req(input$seed_choice)
+  itemized()$bar_total + itemized()$ade_total})
+
+item_plot <- renderPlot({
+  itemized() %>%
+    pivot_longer(1:2, names_to = "item", values_to = "count") %>%
+    ggplot(aes(x = count, y = item, fill = item)) + 
+    geom_col(show.legend = FALSE) + 
+    labs(x = "Total Items Purchased") + 
+    theme_minimal() + 
+    theme(axis.title.y = element_blank())
 })
+
+```
+
+Last month, the Lemondade Stand saw **`r total_cars`** cars pass by during its 28 days of operation. Of these `r total_cars` cars, **`r stopped_cars`** (**`r stopped_percent`%**) stopped at the stand and ordered a total of **`r total_items`** items. The summary of purchases is described in the figure below, as is a breakdown of car stops per day.
+
+```{r plot-1, echo = FALSE}
+item_plot
 ```
